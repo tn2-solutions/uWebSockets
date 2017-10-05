@@ -257,6 +257,21 @@ void Group<isServer>::close(int code, char *message, size_t length) {
     }
 }
 
+template <bool isServer>
+void Group<isServer>::addSubprotocol(std::string subprotocol) {
+    subprotocols.insert(subprotocol);
+}
+
+template <bool isServer>
+bool Group<isServer>::hasSubprotocol(std::string subprotocol) const {
+    return subprotocols.find(subprotocol) != subprotocols.end();
+}
+
+template <bool isServer>
+const std::set<std::string> Group<isServer>::getSubprotocols() const {
+    return subprotocols;
+}
+
 template struct Group<true>;
 template struct Group<false>;
 

@@ -45,7 +45,7 @@ struct HttpRequest {
     Header getHeader(const char *key, size_t length) {
         if (headers) {
             for (Header *h = headers; *++h; ) {
-                if (h->keyLength == length && !strncmp(h->key, key, length)) {
+                if (h->keyLength == length && !strncasecmp(h->key, key, length)) {
                     return *h;
                 }
             }

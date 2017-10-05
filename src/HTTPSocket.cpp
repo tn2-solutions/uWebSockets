@@ -52,6 +52,38 @@ static void base64(unsigned char *src, char *dst) {
     *dst++ = '=';
 }
 
+static std::string selectSubprotocol(Group<SERVER> *group, Header subprotocol) {
+    std::string sps = std::string(subprotocol.value, subprotocol.valueLength);
+    size_t spStart = sps.find_first_not_of(" ,");
+    size_t spEnd = sps.find_first_of(" ,");
+
+    if (spEnd == std::string::npos) {
+        if (group->hasSubprotocol(sps)) {
+            return sps.substr(spStart, spEnd);
+        }
+    } else {
+        std::string sp = sps.substr(spStart, spEnd);
+
+        while (!sp.empty() && !group->hasSubprotocol(sp)) {
+            spStart = sps.find_first_not_of(" ,", spEnd);
+            if (spStart == std::string::npos) {
+                spStart = sps.length();
+            }
+            spEnd = sps.find_first_of(" ,", spStart);
+            if (spEnd == std::string::npos) {
+                spEnd = sps.length();
+            }
+            sp = sps.substr(spStart, spEnd - spStart);
+        }
+
+        if (!sp.empty()) {
+            return sp;
+        }
+    }
+
+    return "";
+}
+
 template <bool isServer>
 uS::Socket *HttpSocket<isServer>::onData(uS::Socket *s, char *data, size_t length) {
     HttpSocket<isServer> *httpSocket = (HttpSocket<isServer> *) s;
@@ -103,13 +135,25 @@ uS::Socket *HttpSocket<isServer>::onData(uS::Socket *s, char *data, size_t lengt
                         Header extensions = req.getHeader("sec-websocket-extensions", 24);
                         Header subprotocol = req.getHeader("sec-websocket-protocol", 22);
                         if (secKey.valueLength == 24) {
+                            std::string selectedSubprotocol;
+
+                            if (subprotocol) {
+                                selectedSubprotocol = selectSubprotocol(Group<SERVER>::from(httpSocket), subprotocol);
+
+                                if (selectedSubprotocol.empty()) {
+                                    httpSocket->onEnd(httpSocket);
+
+                                    return httpSocket;
+                                }
+                            }
+
                             bool perMessageDeflate;
                             httpSocket->upgrade(secKey.value, extensions.value, extensions.valueLength,
-                                               subprotocol.value, subprotocol.valueLength, &perMessageDeflate);
+                                               selectedSubprotocol.c_str(), selectedSubprotocol.length(), &perMessageDeflate);
                             Group<isServer>::from(httpSocket)->removeHttpSocket(httpSocket);
 
                             // Warning: changes socket, needs to inform the stack of Poll address change!
-                            WebSocket<isServer> *webSocket = new WebSocket<isServer>(perMessageDeflate, httpSocket);
+                            WebSocket<isServer> *webSocket = new WebSocket<isServer>(perMessageDeflate, httpSocket, selectedSubprotocol);
                             webSocket->template setState<WebSocket<isServer>>();
                             webSocket->change(webSocket->nodeData->loop, webSocket, webSocket->setPoll(UV_READABLE));
                             Group<isServer>::from(webSocket)->addWebSocket(webSocket);
@@ -158,8 +202,14 @@ uS::Socket *HttpSocket<isServer>::onData(uS::Socket *s, char *data, size_t lengt
             } else {
                 if (req.getHeader("upgrade", 7)) {
 
+                    std::string selectedSubprotocol;
+                    Header subprotocol = req.getHeader("sec-websocket-protocol", 22);
+                    if (subprotocol) {
+                        selectedSubprotocol = std::string(subprotocol.value, subprotocol.valueLength);
+                    }
+
                     // Warning: changes socket, needs to inform the stack of Poll address change!
-                    WebSocket<isServer> *webSocket = new WebSocket<isServer>(false, httpSocket);
+                    WebSocket<isServer> *webSocket = new WebSocket<isServer>(false, httpSocket, selectedSubprotocol);
                     httpSocket->cancelTimeout();
                     webSocket->setUserData(httpSocket->httpUser);
                     webSocket->template setState<WebSocket<isServer>>();

@@ -22,9 +22,11 @@ protected:
         COMPRESSED_FRAME
     } compressionStatus;
     unsigned char controlTipLength = 0, hasOutstandingPong = false;
+    std::string subprotocol;
 
-    WebSocket(bool perMessageDeflate, uS::Socket *socket) : uS::Socket(std::move(*socket)) {
+    WebSocket(bool perMessageDeflate, uS::Socket *socket, std::string optionalSubprotocol = "") : uS::Socket(std::move(*socket)) {
         compressionStatus = perMessageDeflate ? CompressionStatus::ENABLED : CompressionStatus::DISABLED;
+        subprotocol = optionalSubprotocol;
     }
 
     static uS::Socket *onData(uS::Socket *s, char *data, size_t length);
@@ -61,6 +63,8 @@ public:
         int references;
         void(*callback)(void *webSocket, void *data, bool cancelled, void *reserved);
     };
+
+    std::string getSubprotocol() { return subprotocol; }
 
     // Not thread safe
     void sendPrepared(PreparedMessage *preparedMessage, void *callbackData = nullptr);

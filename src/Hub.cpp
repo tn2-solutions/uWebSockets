@@ -64,9 +64,13 @@ void Hub::onClientConnection(uS::Socket *s, bool error) {
     }
 }
 
-bool Hub::listen(const char *host, int port, uS::TLS::Context sslContext, int options, Group<SERVER> *eh) {
+bool Hub::listen(const char *host, int port, uS::TLS::Context sslContext, int options, Group<SERVER> *eh, std::set<std::string> subprotocols) {
     if (!eh) {
         eh = (Group<SERVER> *) this;
+    }
+
+    for (auto subprotocol : subprotocols) {
+        eh->addSubprotocol(subprotocol);
     }
 
     if (uS::Node::listen<onServerAccept>(host, port, sslContext, options, (uS::NodeData *) eh, nullptr)) {
@@ -76,8 +80,8 @@ bool Hub::listen(const char *host, int port, uS::TLS::Context sslContext, int op
     return true;
 }
 
-bool Hub::listen(int port, uS::TLS::Context sslContext, int options, Group<SERVER> *eh) {
-    return listen(nullptr, port, sslContext, options, eh);
+bool Hub::listen(int port, uS::TLS::Context sslContext, int options, Group<SERVER> *eh, std::set<std::string> subprotocols) {
+    return listen(nullptr, port, sslContext, options, eh, subprotocols);
 }
 
 uS::Socket *allocateHttpSocket(uS::Socket *s) {
@@ -146,7 +150,7 @@ bool parseURI(std::string &uri, bool &secure, std::string &hostname, int &port, 
     return true;
 }
 
-void Hub::connect(std::string uri, void *user, std::map<std::string, std::string> extraHeaders, int timeoutMs, Group<CLIENT> *eh) {
+void Hub::connect(std::string uri, void *user, std::map<std::string, std::string> extraHeaders, int timeoutMs, Group<CLIENT> *eh, std::string subprotocols) {
     if (!eh) {
         eh = (Group<CLIENT> *) this;
     }
@@ -180,6 +184,10 @@ void Hub::connect(std::string uri, void *user, std::map<std::string, std::string
                 httpSocket->httpBuffer += header.first + ": " + header.second + "\r\n";
             }
 
+            if (!subprotocols.empty()) {
+                httpSocket->httpBuffer += "Sec-WebSocket-Protocol: " + subprotocols + "\r\n";
+            }
+
             httpSocket->httpBuffer += "\r\n";
         } else {
             eh->errorHandler(user);
@@ -202,7 +210,12 @@ void Hub::upgrade(uv_os_sock_t fd, const char *secKey, SSL *ssl, const char *ext
     bool perMessageDeflate;
     httpSocket->upgrade(secKey, extensions, extensionsLength, subprotocol, subprotocolLength, &perMessageDeflate);
 
-    WebSocket<SERVER> *webSocket = new WebSocket<SERVER>(perMessageDeflate, httpSocket);
+    std::string selectedSubprotocol;
+    if (subprotocol && subprotocolLength > 0) {
+        selectedSubprotocol = std::string(subprotocol, subprotocolLength);
+    }
+
+    WebSocket<SERVER> *webSocket = new WebSocket<SERVER>(perMessageDeflate, httpSocket, selectedSubprotocol);
     delete httpSocket;
     webSocket->setState<WebSocket<SERVER>>();
     webSocket->change(webSocket->nodeData->loop, webSocket, webSocket->setPoll(UV_READABLE));

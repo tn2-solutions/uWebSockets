@@ -6,6 +6,7 @@
 #include "Extensions.h"
 #include <functional>
 #include <stack>
+#include <set>
 
 namespace uWS {
 
@@ -45,6 +46,7 @@ protected:
     uS::Timer *timer = nullptr, *httpTimer = nullptr;
     std::string userPingMessage;
     std::stack<uS::Poll *> iterators;
+    std::set<std::string> subprotocols;
 
     // todo: cannot be named user, collides with parent!
     void *userData = nullptr;
@@ -77,6 +79,11 @@ public:
     void onHttpDisconnection(std::function<void(HttpSocket<isServer> *)> handler);
     void onCancelledHttpRequest(std::function<void(HttpResponse *)> handler);
     void onHttpUpgrade(std::function<void(HttpSocket<isServer> *, HttpRequest)> handler);
+
+    // Subprotocol methods
+    void addSubprotocol(std::string subprotocol);
+    bool hasSubprotocol(std::string subprotocol) const;
+    const std::set<std::string> getSubprotocols() const;
 
     // Thread safe
     void broadcast(const char *message, size_t length, OpCode opCode);
